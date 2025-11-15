@@ -1,0 +1,1 @@
+# Shaykhutdinov_YNBO_07_24_Practic2
