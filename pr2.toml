@@ -1,0 +1,5 @@
+title = "acf-apk-tools"
+url = "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/APKINDEX.tar.gz"
+test = true
+version = "0.11.0-r3"
+ascii = false
