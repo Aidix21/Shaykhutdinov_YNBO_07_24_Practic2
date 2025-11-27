@@ -17,26 +17,20 @@ except Exception as e:
     print(f"Ошибка при чтении конфигурационного файла: {e}")
     sys.exit(1)
 
-# Вывод всех параметров в формате ключ-значение
-print("Настраиваемые параметры:")
+# Получение параметров из конфигурации
 try:
-    package_name = config.get("title", "Не указано")
-    url = config.get("url", "Не указан")
-    test_mode = config.get("test", False)
-    version = config.get("version", "Не указана")
-    ascii_tree = config.get("ascii", False)
+    package_name = config.get("title")
+    url = config.get("url")
+    version = config.get("version")
     
-    print(f"Имя пакета: {package_name}")
-    print(f"URL репозитория: {url}")
-    print(f"Тестовый режим: {test_mode}")
-    print(f"Версия пакета: {version}")
-    print(f"Режим ASCII-дерева: {ascii_tree}")
-    
+    if not package_name or not url or not version:
+        raise KeyError("Отсутствуют обязательные параметры")
+        
 except KeyError as e:
-    print(f"Ошибка: Отсутствует обязательный параметр в конфигурации: {e}")
+    print(f"Ошибка: {e}")
     sys.exit(1)
 
-# Обработка URL и загрузка данных
+# Загрузка и обработка APKINDEX
 try:
     response = requests.get(url)
     response.raise_for_status()
@@ -47,11 +41,12 @@ except requests.exceptions.RequestException as e:
 try:
     tar_gz_bytes = response.content
     tar_gz_file = io.BytesIO(tar_gz_bytes)
+    
     with tarfile.open(fileobj=tar_gz_file, mode='r:gz') as tar:
         # Поиск файла APKINDEX в архиве
         apkindex_member = None
         for member in tar.getmembers():
-            if member.name.endswith('APKINDEX'):
+            if 'APKINDEX' in member.name:
                 apkindex_member = member
                 break
         
@@ -61,8 +56,43 @@ try:
             
         content = tar.extractfile(apkindex_member)
         if content:
-            print("\nСодержимое APKINDEX:")
-            print(content.read().decode('utf-8', errors='ignore'))
+            apkindex_content = content.read().decode('utf-8', errors='ignore')
+            
+            # Парсинг APKINDEX для поиска заданного пакета и его зависимостей
+            packages = apkindex_content.split('\n\n')
+            target_package = None
+            
+            for pkg_block in packages:
+                if not pkg_block.strip():
+                    continue
+                    
+                pkg_info = {}
+                for line in pkg_block.split('\n'):
+                    if line.startswith('P:'):
+                        pkg_info['name'] = line[2:]
+                    elif line.startswith('V:'):
+                        pkg_info['version'] = line[2:]
+                    elif line.startswith('D:'):
+                        pkg_info['dependencies'] = line[2:]
+                
+                if pkg_info.get('name') == package_name and pkg_info.get('version') == version:
+                    target_package = pkg_info
+                    break
+            
+            if target_package:
+                print(f"Прямые зависимости пакета {package_name} версии {version}:")
+                if target_package.get('dependencies'):
+                    deps = target_package['dependencies'].split()
+                    for dep in deps:
+                        # Убираем условия версий (все что после ~, <, >, = и т.д.)
+                        clean_dep = dep.split('~')[0].split('<')[0].split('>')[0].split('=')[0]
+                        if clean_dep:
+                            print(f"  - {clean_dep}")
+                else:
+                    print("  Зависимости отсутствуют")
+            else:
+                print(f"Пакет {package_name} версии {version} не найден в репозитории")
+                
         else:
             print("Ошибка: Не удалось извлечь файл APKINDEX")
             
@@ -72,11 +102,3 @@ except tarfile.TarError as e:
 except Exception as e:
     print(f"Неожиданная ошибка: {e}")
     sys.exit(1)
-
-# Демонстрация режимов (заглушки для дальнейшей реализации)
-if test_mode:
-    print("\nРежим тестового репозитория активирован")
-
-if ascii_tree:
-    print("\nРежим вывода в формате ASCII-дерева активирован")
-    # Здесь будет реализация построения дерева зависимостей
